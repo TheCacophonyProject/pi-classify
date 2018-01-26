@@ -12,6 +12,7 @@ import cv2
 import json
 import scipy.ndimage
 import cptv
+import time
 
 MODEL_NAME = "models/model_lq_thermal"
 
@@ -291,19 +292,28 @@ class VideoClassifier():
 
         assert self.model, 'Model must be loaded for classification.'
 
+        profile_times = {}
+
+        start_time = time.time()
+
         height, width = thermal.shape
 
         thermal = np.float32(thermal)
 
         # create a mask
+        t0 = time.time()
         self.thermal = thermal.copy()
         self.filtered = self.thermal.copy()
         self.filtered -= (np.median(self.thermal) + 40)
+        profile_times['mask'] = time.time() - t0
 
         # find regions of interest
+        t0 = time.time()
         regions, self.mask = self.get_regions_of_interest(self.filtered)
+        profile_times['regions of interest'] = time.time() - t0
 
         # generate optical flow
+        t0 = time.time()
         current = np.uint8(np.clip(self.filtered, 0, 255))
 
         if self.prev is not None:
@@ -315,6 +325,7 @@ class VideoClassifier():
             self.flow = np.zeros([height, width, 2], dtype=np.float32)
 
         self.prev = current
+        profile_times['optical flow'] = time.time() - t0
 
         # run classifier on center of image
         # note we really should be tracking properly....
@@ -323,17 +334,27 @@ class VideoClassifier():
         else:
             bounds = regions[0]
 
+        t0 = time.time()
         frame = self.get_region_channels(bounds)
+        profile_times['extract channels'] = time.time() - t0
 
+        t0 = time.time()
         prediction, state = self.model.classifiy_next_frame(frame, state)
+        profile_times['classify'] = time.time() - t0
+
+        profile_times['total'] = time.time() - start_time
+
+        profile_string = " ".join(["{}:{:.1f}ms".format(k, v * 1000) for k,v in profile_times.items()])
+        print(profile_string)
 
         return bounds, prediction, state
 
-
-
 def main():
 
+    t0 = time.time()
     model = Model(MODEL_NAME)
+    print("Loaded model {:.1f}s".format(time.time() - t0))
+
     classifier = VideoClassifier(model)
 
     print(model.labels)
