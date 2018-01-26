@@ -6,7 +6,6 @@ A simple example of streamed classification.
 
 """
 
-
 import numpy as np
 import tensorflow as tf
 import cv2
@@ -14,7 +13,7 @@ import json
 import scipy.ndimage
 import cptv
 
-MODEL_NAME = "models/model_lq"
+MODEL_NAME = "models/model_lq_thermal"
 
 # globals
 session = None
@@ -319,8 +318,11 @@ class VideoClassifier():
 
         # run classifier on center of image
         # note we really should be tracking properly....
-        #bounds = Region(80-24, 60-24, 48, 48)
-        bounds = regions[0]
+        if len(regions) == 0:
+            bounds = Region(80-24, 60-24, 48, 48)
+        else:
+            bounds = regions[0]
+
         frame = self.get_region_channels(bounds)
 
         prediction, state = self.model.classifiy_next_frame(frame, state)
@@ -336,7 +338,7 @@ def main():
 
     print(model.labels)
 
-    video = cptv.CPTVReader(open('20171024-103017-akaroa04.cptv','rb'))
+    video = cptv.CPTVReader(open('resources/20171024-103017-akaroa04.cptv','rb'))
     state = None
     for frame, _ in video:
         bounds, pred, state = classifier.process_next_frame(frame, state)
