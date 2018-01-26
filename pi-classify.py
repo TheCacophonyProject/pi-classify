@@ -16,9 +16,34 @@ import time
 
 MODEL_NAME = "models/model_lq_thermal"
 
+class Profiler():
+
+    def __init__(self):
+        self.times = {}
+        self.counts = {}
+
+    def add(self, name, time):
+        if name not in self.times:
+            self.times[name] = 0.0
+            self.counts[name] = 0
+
+        self.times[name] += time
+        self.counts[name] = self.counts[name] + 1
+
+    def reset(self):
+        self.times = {}
+        self.counts = {}
+
+    def __repr__(self):
+        profile_times = {}
+        for name in self.times.keys():
+            profile_times[name] = self.times[name] / self.counts[name]
+        return " ".join(["{}:{:.1f}ms".format(k, v * 1000) for k,v in profile_times.items()])
+
 # globals
 session = None
 lables = []
+profile = Profiler()
 
 def get_session():
     """ Returns a new tensorflow session. """
@@ -218,6 +243,7 @@ class VideoClassifier():
         self.opt_flow.setScalesNumber(3)
         self.opt_flow.setWarpingsNumber(3)
         self.opt_flow.setScaleStep(0.5)
+        self.opt_flow.setUseInitialFlow(True)
 
         self.prev = None
         self.thermal = None
@@ -292,8 +318,6 @@ class VideoClassifier():
 
         assert self.model, 'Model must be loaded for classification.'
 
-        profile_times = {}
-
         start_time = time.time()
 
         height, width = thermal.shape
@@ -305,12 +329,12 @@ class VideoClassifier():
         self.thermal = thermal.copy()
         self.filtered = self.thermal.copy()
         self.filtered -= (np.median(self.thermal) + 40)
-        profile_times['mask'] = time.time() - t0
+        profile.add('mask', time.time() - t0)
 
         # find regions of interest
         t0 = time.time()
         regions, self.mask = self.get_regions_of_interest(self.filtered)
-        profile_times['regions of interest'] = time.time() - t0
+        profile.add('regions_of_interest', time.time() - t0)
 
         # generate optical flow
         t0 = time.time()
@@ -325,7 +349,7 @@ class VideoClassifier():
             self.flow = np.zeros([height, width, 2], dtype=np.float32)
 
         self.prev = current
-        profile_times['optical flow'] = time.time() - t0
+        profile.add('optical_flow', time.time() - t0)
 
         # run classifier on center of image
         # note we really should be tracking properly....
@@ -336,16 +360,15 @@ class VideoClassifier():
 
         t0 = time.time()
         frame = self.get_region_channels(bounds)
-        profile_times['extract channels'] = time.time() - t0
+        profile.add('extract_channels', time.time() - t0)
 
         t0 = time.time()
         prediction, state = self.model.classifiy_next_frame(frame, state)
-        profile_times['classify'] = time.time() - t0
+        profile.add('classify', time.time() - t0)
 
-        profile_times['total'] = time.time() - start_time
+        profile.add('total', time.time() - start_time)
 
-        profile_string = " ".join(["{}:{:.1f}ms".format(k, v * 1000) for k,v in profile_times.items()])
-        print(profile_string)
+        print(profile)
 
         return bounds, prediction, state
 
